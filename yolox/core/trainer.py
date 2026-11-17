@@ -114,7 +114,7 @@ class Trainer:
         self.scaler.update()
 
         if self.use_model_ema:
-            self.ema_model.update(self.model)
+            self.ema_model.update(self.raw_model)
 
         lr = self.lr_scheduler.update_lr(self.progress_in_iter + 1)
         for param_group in self.optimizer.param_groups:
@@ -168,9 +168,17 @@ class Trainer:
         if self.is_distributed:
             model = DDP(model, device_ids=[self.local_rank], broadcast_buffers=False)
 
+        # keep a reference to the non-compiled model for EMA / checkpoint /
+        # attribute access (the compiled wrapper has no `.module` and prefixes
+        # state_dict keys with `_orig_mod.`)
+        self.raw_model = model
+
         if self.use_model_ema:
             self.ema_model = ModelEMA(model, 0.9998)
             self.ema_model.updates = self.max_iter * self.start_epoch
+
+        if getattr(self.args, "compile", False):
+            model = torch.compile(model)
 
         self.model = model
 
@@ -222,9 +230,9 @@ class Trainer:
             self.train_loader.close_mosaic()
             logger.info("--->Add additional L1 loss now!")
             if self.is_distributed:
-                self.model.module.head.use_l1 = True
+                self.raw_model.module.head.use_l1 = True
             else:
-                self.model.head.use_l1 = True
+                self.raw_model.head.use_l1 = True
             self.exp.eval_interval = 1
             if not self.no_aug:
                 self.save_ckpt(ckpt_name="last_mosaic_epoch")
@@ -233,7 +241,7 @@ class Trainer:
         self.save_ckpt(ckpt_name="latest")
 
         if (self.epoch + 1) % self.exp.eval_interval == 0:
-            all_reduce_norm(self.model)
+            all_reduce_norm(self.raw_model)
             self.evaluate_and_save_model()
 
     def before_iter(self):
@@ -347,7 +355,7 @@ class Trainer:
         if self.use_model_ema:
             evalmodel = self.ema_model.ema
         else:
-            evalmodel = self.model
+            evalmodel = self.raw_model
             if is_parallel(evalmodel):
                 evalmodel = evalmodel.module
 
@@ -398,7 +406,9 @@ class Trainer:
 
     def save_ckpt(self, ckpt_name, update_best_ckpt=False, ap=None):
         if self.rank == 0:
-            save_model = self.ema_model.ema if self.use_model_ema else self.model
+            save_model = (
+                self.ema_model.ema if self.use_model_ema else self.raw_model
+            )
             logger.info("Save weights to {}".format(self.file_name))
             ckpt_state = {
                 "start_epoch": self.epoch + 1,

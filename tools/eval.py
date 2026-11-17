@@ -76,6 +76,13 @@ def make_parser():
         help="Fuse conv and bn for testing.",
     )
     parser.add_argument(
+        "--compile",
+        dest="compile",
+        default=False,
+        action="store_true",
+        help="Use torch.compile to speed up evaluation.",
+    )
+    parser.add_argument(
         "--trt",
         dest="trt",
         default=False,
@@ -188,6 +195,9 @@ def main(exp, args, num_gpu):
     else:
         trt_file = None
         decoder = None
+        if args.compile:
+            logger.info("\tCompiling model with torch.compile...")
+            model = torch.compile(model)
 
     # start evaluate
     *_, summary = evaluator.evaluate(

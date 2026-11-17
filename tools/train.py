@@ -61,9 +61,22 @@ def make_parser():
     parser.add_argument(
         "--fp16",
         dest="fp16",
+        default=True,
+        action="store_true",
+        help="Adopting mix precision training. (default: enabled)",
+    )
+    parser.add_argument(
+        "--no-fp16",
+        dest="fp16",
+        action="store_false",
+        help="Disable mix precision training.",
+    )
+    parser.add_argument(
+        "--compile",
+        dest="compile",
         default=False,
         action="store_true",
-        help="Adopting mix precision training.",
+        help="Use torch.compile to speed up training.",
     )
     parser.add_argument(
         "--cache",
