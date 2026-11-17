@@ -74,9 +74,23 @@ def make_parser():
     parser.add_argument(
         "--compile",
         dest="compile",
-        default=False,
+        default=True,
         action="store_true",
-        help="Use torch.compile to speed up training.",
+        help="Use torch.compile to speed up training. (default: enabled)",
+    )
+    parser.add_argument(
+        "--no-compile",
+        dest="compile",
+        action="store_false",
+        help="Disable torch.compile.",
+    )
+    parser.add_argument(
+        "--multiscale_range",
+        type=int,
+        default=0,
+        help="Multiscale training range (overrides the exp). 0 = fixed input size "
+        "(fastest, works with --compile); 5 = original [480,800] range. "
+        "Multiscale is incompatible with --compile (compile is auto-disabled).",
     )
     parser.add_argument(
         "--channels_last",
@@ -144,6 +158,16 @@ if __name__ == "__main__":
     exp = get_exp(args.exp_file, args.name)
     exp.merge(args.opts)
     check_exp_value(exp)
+
+    # CLI controls the input-size strategy: default is fixed size (640) for speed;
+    # pass --multiscale_range 5 to restore the original [480,800] multiscale range.
+    exp.multiscale_range = args.multiscale_range
+    if args.multiscale_range > 0 and args.compile:
+        logger.warning(
+            "multiscale training (multiscale_range={}) is incompatible with "
+            "torch.compile; disabling --compile".format(args.multiscale_range)
+        )
+        args.compile = False
 
     if not args.experiment_name:
         args.experiment_name = exp.exp_name
