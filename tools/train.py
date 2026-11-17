@@ -79,6 +79,13 @@ def make_parser():
         help="Use torch.compile to speed up training.",
     )
     parser.add_argument(
+        "--channels_last",
+        dest="channels_last",
+        default=False,
+        action="store_true",
+        help="Use channels_last memory format (~10%% conv speedup; may slightly change results).",
+    )
+    parser.add_argument(
         "--cache",
         type=str,
         nargs="?",

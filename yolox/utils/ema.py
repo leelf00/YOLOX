@@ -44,17 +44,25 @@ class ModelEMA:
         self.decay = lambda x: decay * (1 - math.exp(-x / 2000))
         for p in self.ema.parameters():
             p.requires_grad_(False)
+        # cache (ema, model) tensor pairs once so update() skips state_dict()
+        ema_mod = self.ema.module if is_parallel(self.ema) else self.ema
+        mod = model.module if is_parallel(model) else model
+        ema_sd = ema_mod.state_dict()
+        mod_sd = mod.state_dict()
+        self._pairs = [
+            (ema_sd[k], mod_sd[k])
+            for k in ema_sd
+            if ema_sd[k].dtype.is_floating_point
+        ]
 
-    def update(self, model):
-        # Update EMA parameters
+    def update(self, model=None):
+        # Update EMA parameters in-place using cached tensor references
+        # (equivalent to the old state_dict() loop, but without rebuilding
+        # the state_dict every iteration). `model` is accepted for backward
+        # compatibility; the references captured at init are used instead.
         with torch.no_grad():
             self.updates += 1
             d = self.decay(self.updates)
-
-            msd = (
-                model.module.state_dict() if is_parallel(model) else model.state_dict()
-            )  # model state_dict
-            for k, v in self.ema.state_dict().items():
-                if v.dtype.is_floating_point:
-                    v *= d
-                    v += (1.0 - d) * msd[k].detach()
+            om = 1.0 - d
+            for ev, mv in self._pairs:
+                ev.mul_(d).add_(mv, alpha=om)

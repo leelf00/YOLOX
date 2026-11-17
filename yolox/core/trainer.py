@@ -146,6 +146,10 @@ class Trainer:
         # value of epoch will be set in `resume_train`
         model = self.resume_train(model)
 
+        if getattr(self.args, "channels_last", False):
+            logger.info("Using channels_last memory format")
+            model = model.to(memory_format=torch.channels_last)
+
         # data related init
         self.no_aug = self.start_epoch >= self.max_epoch - self.exp.no_aug_epochs
         self.train_loader = self.exp.get_data_loader(

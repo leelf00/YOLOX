@@ -83,6 +83,13 @@ def make_parser():
         help="Use torch.compile to speed up evaluation.",
     )
     parser.add_argument(
+        "--channels_last",
+        dest="channels_last",
+        default=False,
+        action="store_true",
+        help="Use channels_last memory format for faster inference.",
+    )
+    parser.add_argument(
         "--trt",
         dest="trt",
         default=False,
@@ -195,6 +202,8 @@ def main(exp, args, num_gpu):
     else:
         trt_file = None
         decoder = None
+        if args.channels_last:
+            model = model.to(memory_format=torch.channels_last)
         if args.compile:
             logger.info("\tCompiling model with torch.compile...")
             model = torch.compile(model)
