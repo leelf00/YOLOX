@@ -100,6 +100,13 @@ def make_parser():
         help="Use channels_last memory format (~10%% conv speedup; may slightly change results).",
     )
     parser.add_argument(
+        "--prefetch_depth",
+        type=int,
+        default=1,
+        help="Number of batches the DataPrefetcher keeps in flight (1 = original "
+        "single-batch; 2-3 hides data_time spikes from an occasionally slow worker).",
+    )
+    parser.add_argument(
         "--cache",
         type=str,
         nargs="?",

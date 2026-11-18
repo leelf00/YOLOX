@@ -22,13 +22,17 @@ def augment_hsv(img, hgain=5, sgain=30, vgain=30):
     hsv_augs = np.random.uniform(-1, 1, 3) * [hgain, sgain, vgain]  # random gains
     hsv_augs *= np.random.randint(0, 2, 3)  # random selection of h, s, v
     hsv_augs = hsv_augs.astype(np.int16)
-    img_hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV).astype(np.int16)
+    img_hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
 
-    img_hsv[..., 0] = (img_hsv[..., 0] + hsv_augs[0]) % 180
-    img_hsv[..., 1] = np.clip(img_hsv[..., 1] + hsv_augs[1], 0, 255)
-    img_hsv[..., 2] = np.clip(img_hsv[..., 2] + hsv_augs[2], 0, 255)
+    img_hsv[..., 0] = (img_hsv[..., 0].astype(np.int16) + hsv_augs[0]) % 180
+    s = np.ascontiguousarray(img_hsv[..., 1])
+    v = np.ascontiguousarray(img_hsv[..., 2])
+    cv2.add(s, int(hsv_augs[1]), dst=s)
+    cv2.add(v, int(hsv_augs[2]), dst=v)
+    img_hsv[..., 1] = s
+    img_hsv[..., 2] = v
 
-    cv2.cvtColor(img_hsv.astype(img.dtype), cv2.COLOR_HSV2BGR, dst=img)  # no return needed
+    cv2.cvtColor(img_hsv, cv2.COLOR_HSV2BGR, dst=img)  # no return needed
 
 
 def get_aug_params(value, center=0):
@@ -134,24 +138,26 @@ def random_affine(
 def _mirror(image, boxes, prob=0.5):
     _, width, _ = image.shape
     if random.random() < prob:
-        image = image[:, ::-1]
+        image = cv2.flip(image, 1)
         boxes[:, 0::2] = width - boxes[:, 2::-2]
     return image, boxes
 
 
 def preproc(img, input_size, swap=(2, 0, 1)):
     if len(img.shape) == 3:
-        padded_img = np.ones((input_size[0], input_size[1], 3), dtype=np.uint8) * 114
+        padded_img = np.full((input_size[0], input_size[1], 3), 114, dtype=np.uint8)
     else:
-        padded_img = np.ones(input_size, dtype=np.uint8) * 114
+        padded_img = np.full(input_size, 114, dtype=np.uint8)
 
     r = min(input_size[0] / img.shape[0], input_size[1] / img.shape[1])
-    resized_img = cv2.resize(
-        img,
-        (int(img.shape[1] * r), int(img.shape[0] * r)),
-        interpolation=cv2.INTER_LINEAR,
-    ).astype(np.uint8)
-    padded_img[: int(img.shape[0] * r), : int(img.shape[1] * r)] = resized_img
+    new_w, new_h = int(img.shape[1] * r), int(img.shape[0] * r)
+    if (new_w, new_h) != (img.shape[1], img.shape[0]):
+        resized_img = cv2.resize(
+            img, (new_w, new_h), interpolation=cv2.INTER_LINEAR
+        )
+    else:
+        resized_img = img
+    padded_img[:new_h, :new_w] = resized_img
 
     padded_img = padded_img.transpose(swap)
     padded_img = np.ascontiguousarray(padded_img, dtype=np.float32)

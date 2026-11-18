@@ -28,9 +28,9 @@ class Exp(BaseExp):
         self.act = "silu"
 
         # ---------------- dataloader config ---------------- #
-        # set worker to 4 for shorter dataloader init time
-        # If your training process cost many memory, reduce this value.
-        self.data_num_workers = 4
+        # Default to half the CPU threads (avoids oversubscription while keeping
+        # the dataloader init fast). Override per-exp if memory is tight.
+        self.data_num_workers = max(1, (os.cpu_count() or 4) // 2)
         self.input_size = (640, 640)  # (height, width)
         # Actual multiscale ranges: [640 - 5 * 32, 640 + 5 * 32].
         # To disable multiscale training, set the value to 0.
