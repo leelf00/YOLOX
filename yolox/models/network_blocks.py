@@ -2,8 +2,12 @@
 # -*- encoding: utf-8 -*-
 # Copyright (c) Megvii Inc. All rights reserved.
 
+import os
+
 import torch
 import torch.nn as nn
+
+_USE_FUSED_BN_SILU = os.environ.get("YOLOX_FUSED_BN_SILU", "0") == "1"
 
 
 class SiLU(nn.Module):
@@ -46,8 +50,19 @@ class BaseConv(nn.Module):
         )
         self.bn = nn.BatchNorm2d(out_channels)
         self.act = get_activation(act, inplace=True)
+        self.use_fused_bn_silu = _USE_FUSED_BN_SILU  # toggle for fused BN+SiLU kernel
 
     def forward(self, x):
+        if self.use_fused_bn_silu and self.act.__class__.__name__ == "SiLU":
+            from yolox.layers.bn_silu import bn_silu
+            conv_out = self.conv(x)
+            w = self.bn.weight.half() if self.bn.weight.dtype != torch.float16 else self.bn.weight
+            b = self.bn.bias.half() if self.bn.bias.dtype != torch.float16 else self.bn.bias
+            return bn_silu(
+                conv_out, w, b,
+                self.bn.running_mean, self.bn.running_var,
+                self.bn.eps, self.training, self.bn.momentum,
+            )
         return self.act(self.bn(self.conv(x)))
 
     def fuseforward(self, x):
